@@ -1,0 +1,9 @@
+listen_port: 9877
+poll_interval: 15   # seconds between polls
+timeout: 10         # RPC request timeout, seconds
+
+chains:
+  - name: ethereum
+    rpc_url: https://<ETH_RPC_HOST>
+  - name: bsc
+    rpc_url: ${BSC_RPC_URL}   # env vars are expanded (e.g. from .env via docker compose)

@@ -1,0 +1,12 @@
+services:
+  chain-mon:
+    build: .
+    image: chain-mon:latest
+    restart: unless-stopped
+    ports:
+      - "9877:9877"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    env_file:
+      - path: .env
+        required: false
