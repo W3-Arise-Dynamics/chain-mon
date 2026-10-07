@@ -26,12 +26,20 @@ whole exporter lives in `exporter.py`.
   (default true). Their failures never affect `evm_rpc_up` / `evm_rpc_errors_total`, which track only
   the latest-block call. A call the endpoint rejects (JSON-RPC error, HTTP 4xx except 429) is disabled
   for that chain until restart and its series removed; transient errors just skip that poll.
+  To add one, write a `poll_<key>()` function and register it in the `OPTIONAL` table in
+  `exporter.py`; the toggle, error handling, series removal and log hint come for free.
+- **Warnings must be actionable.** An optional-call warning tells the operator how to silence it
+  (`set '<key>: false' for this chain`). Keep that hint when adding or changing log messages.
 - **Create a labelled series only once it has a value** (compute first, then `.labels().set()`), so
   unsupported metrics are absent rather than 0.
 - **Chains are isolated.** Each chain polls in its own thread; a slow or failing RPC must never delay
   or break another chain.
 - **Failures keep last values.** On a failed latest-block poll set `evm_rpc_up` to 0 and increment
   `evm_rpc_errors_total`; do not reset block metrics.
+- **Exit promptly on SIGTERM.** The exporter runs as PID 1 in the container, where SIGTERM is
+  ignored unless handled; keep the handler in `main()` so `docker stop` doesn't wait for the kill.
+- **Validate config before starting the HTTP server** and fail fast with a clear message. Chain names
+  must be strings (YAML turns unquoted `on`/`off`/`yes`/`no` into booleans).
 - **Never log RPC URLs** or exception messages that may contain them (URLs can embed API keys);
   log via `describe()`, never `str()` of a `requests` exception.
 - Metric names use the `evm_` prefix, a `chain` label, and Prometheus naming conventions
@@ -53,14 +61,25 @@ This repository is public and must stay generic:
 
 ## Verify
 
+Test against real public endpoints: pick several chains and providers from
+[chainlist.org](https://chainlist.org) (machine-readable list: `https://chainlist.org/rpcs.json`),
+including some that block `net_peerCount`, plus one bogus URL. Keep this in the git-ignored
+`config.yaml`; never commit test endpoints.
+
 ```sh
 python3 -m py_compile exporter.py
-cp config.example.yaml config.yaml   # point at a real endpoint and one bogus URL
-docker compose up -d
+docker compose up -d                 # always rebuilds (pull_policy: build)
 curl -s localhost:9877/metrics | grep evm_
 docker compose logs                  # must not contain RPC URLs
+time docker compose stop             # should return in well under a second
 docker compose down
 ```
 
-Expected: the working chain's block number advances between scrapes and its timestamp is close to
-`date +%s`; the bogus chain shows `evm_rpc_up 0` and a growing `evm_rpc_errors_total`.
+Expected:
+
+- Working chains: latest block number advances between scrapes, timestamp close to `date +%s`;
+  finalized metrics present where supported.
+- Endpoints blocking `net_peerCount`: `evm_rpc_up 1`, no `evm_peer_count` series, one
+  "not supported ... set 'peer_count: false'" warning.
+- Bogus URL: `evm_rpc_up 0` and a growing `evm_rpc_errors_total`.
+- HTTP 429 from rate-limited public endpoints is transient and must not disable any check.
