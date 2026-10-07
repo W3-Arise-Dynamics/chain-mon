@@ -111,9 +111,17 @@ def poll(name, url, interval, timeout, optional):
                             gauge.remove(name)
                         except KeyError:
                             pass
-                    log.warning("%s: %s not supported by endpoint, disabled until restart (%s)", name, key, describe(e))
+                    log.warning(
+                        "%s: %s not supported by endpoint, disabled until restart (%s); "
+                        "set '%s: false' for this chain to skip the check",
+                        name, key, describe(e), key,
+                    )
                 else:
-                    log.warning("%s: %s poll failed (%s)", name, key, describe(e))
+                    log.warning(
+                        "%s: %s poll failed (%s); if the endpoint does not support it, "
+                        "set '%s: false' for this chain to disable the check",
+                        name, key, describe(e), key,
+                    )
         time.sleep(interval)
 
 
