@@ -2,6 +2,7 @@ services:
   chain-mon:
     build: .
     image: chain-mon:latest
+    pull_policy: build
     restart: unless-stopped
     ports:
       - "9877:9877"

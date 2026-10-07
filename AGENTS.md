@@ -5,21 +5,25 @@ Guidance for coding agents working in this repository.
 ## Project
 
 `chain-mon` is a minimal Prometheus exporter for EVM chains. It polls
-`eth_getBlockByNumber("latest", false)` on each configured JSON-RPC endpoint and exposes the latest
-block number and timestamp. Keep it small: the whole exporter lives in `exporter.py`.
+`eth_getBlockByNumber` (`latest` and `finalized`) on each configured JSON-RPC endpoint and exposes
+block numbers and timestamps, plus the node's peer count (`net_peerCount`). Keep it small: the
+whole exporter lives in `exporter.py`.
 
 | File | Purpose |
 |---|---|
 | `exporter.py` | Exporter: config loading, one polling thread per chain, metrics HTTP server |
 | `config.example.yaml` | Example config (placeholders only) |
 | `requirements.txt` | Pinned Python dependencies |
-| `Dockerfile`, `docker-compose.yml` | Container build and run (`docker compose up -d --build`) |
+| `Dockerfile`, `docker-compose.yml` | Container build and run (`docker compose up -d` always builds locally, `pull_policy: build`) |
 | `README.md` | User-facing docs: config, metrics, PromQL, alerts |
 
 ## Design rules
 
-- **No derived values in the exporter.** Expose raw facts (block number, block timestamp); derived
-  values such as block age are computed in PromQL (`time() - evm_latest_block_timestamp_seconds`).
+- **No derived values in the exporter.** Expose raw facts (block numbers, block timestamps, peer
+  count); derived values such as block age or finality lag are computed in PromQL
+  (`time() - evm_latest_block_timestamp_seconds`).
+- **Optional RPC calls are per-chain toggles** (`finalized` and `peer_count`, both default true),
+  because endpoint support varies. Any enabled call failing marks the poll as failed.
 - **Chains are isolated.** Each chain polls in its own thread; a slow or failing RPC must never delay
   or break another chain.
 - **Failures keep last values.** On a failed poll set `evm_rpc_up` to 0 and increment
@@ -47,7 +51,7 @@ This repository is public and must stay generic:
 ```sh
 python3 -m py_compile exporter.py
 cp config.example.yaml config.yaml   # point at a real endpoint and one bogus URL
-docker compose up -d --build
+docker compose up -d
 curl -s localhost:9877/metrics | grep evm_
 docker compose logs                  # must not contain RPC URLs
 docker compose down
