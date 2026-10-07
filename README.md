@@ -47,11 +47,22 @@ Per-chain options:
 |---|---|---|---|
 | `name` | yes | | Value of the `chain` label |
 | `rpc_url` | yes | | JSON-RPC HTTP endpoint |
-| `finalized` | no | `true` | Also poll `eth_getBlockByNumber("finalized")`. Set `false` for chains or clients that don't support the tag |
-| `peer_count` | no | `true` | Also poll `net_peerCount`. Set `false` for endpoints that block it (common with hosted providers) |
+| `finalized` | no | `true` | Also poll `eth_getBlockByNumber("finalized")` |
+| `peer_count` | no | `true` | Also poll `net_peerCount` |
 
-If any enabled call fails, the whole poll counts as failed (`evm_rpc_up` = 0), so only enable what
-the endpoint supports.
+`finalized` and `peer_count` are best-effort, so they can stay on even for endpoints that don't
+support them:
+
+- `evm_rpc_up` and `evm_rpc_errors_total` only track the latest-block call; a failing optional call
+  never marks the chain as down.
+- If the endpoint rejects the call (a JSON-RPC error such as "method not found", or an HTTP 4xx
+  other than 429), the call is disabled for that chain until restart, its metrics are removed, and
+  one warning is logged. Hosted providers commonly block `net_peerCount`.
+- Transient failures (timeouts, HTTP 429/5xx) skip that metric for the current poll and keep its
+  last value.
+
+Set the key to `false` to skip the call entirely. Chain names must be strings: quote YAML words
+like `'on'`, `'off'`, `'yes'` or `'no'`.
 
 `rpc_url` supports `${VAR}` expansion, so API keys can live in a `.env` file next to
 `docker-compose.yml` instead of the config. Both `config.yaml` and `.env` are git-ignored.
@@ -70,8 +81,8 @@ All metrics carry a `chain` label.
 | `evm_finalized_block_number` | gauge | Finalized block number (if `finalized`) |
 | `evm_finalized_block_timestamp_seconds` | gauge | Unix timestamp of the finalized block (if `finalized`) |
 | `evm_peer_count` | gauge | Peers connected to the node (if `peer_count`) |
-| `evm_rpc_up` | gauge | `1` if the last poll succeeded, `0` otherwise |
-| `evm_rpc_errors_total` | counter | Failed polls |
+| `evm_rpc_up` | gauge | `1` if the last latest-block poll succeeded, `0` otherwise |
+| `evm_rpc_errors_total` | counter | Failed latest-block polls |
 
 ## PromQL
 

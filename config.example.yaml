@@ -22,15 +22,21 @@ timeout: 10
 # Chains to monitor. Each chain is polled in its own thread.
 #
 # Per-chain keys:
-#   name        Required. Value of the `chain` label on every metric.
+#   name        Required. Value of the `chain` label on every metric. Must be a string:
+#               quote YAML words like 'on', 'off', 'yes', 'no'.
 #   rpc_url     Required. JSON-RPC HTTP(S) endpoint. Never logged.
 #   finalized   Optional, default true. Poll eth_getBlockByNumber("finalized") and export
-#               evm_finalized_block_*. Set false if the chain/client lacks the tag.
+#               evm_finalized_block_*.
 #   peer_count  Optional, default true. Poll net_peerCount and export evm_peer_count.
-#               Set false for endpoints that block it (common with hosted providers).
 #
-# If any enabled call fails, the whole poll counts as failed: evm_rpc_up becomes 0
-# and evm_rpc_errors_total increases. Disable what the endpoint does not support.
+# finalized and peer_count are best-effort and safe to leave on:
+#   - evm_rpc_up / evm_rpc_errors_total track only the latest-block call, so a failing
+#     optional call never marks the chain as down.
+#   - If the endpoint rejects the call (JSON-RPC error, or HTTP 4xx other than 429), it is
+#     disabled for that chain until restart and its metrics are removed (one warning logged).
+#     Hosted providers commonly block net_peerCount.
+#   - Transient failures (timeouts, HTTP 429/5xx) skip that metric for the current poll.
+# Set a key to false to skip the call entirely.
 chains:
   # Own node: optional keys omitted, so latest + finalized + peer count are all polled.
   - name: ethereum
@@ -38,11 +44,12 @@ chains:
 
   # Hosted provider, URL with API key read from the environment (.env):
   #   BSC_RPC_URL=https://<PROVIDER_HOST>/<API_KEY>
+  # peer_count explicitly off: the provider is known to block net_peerCount.
   - name: bsc
     rpc_url: ${BSC_RPC_URL}
     peer_count: false
 
-  # Chain or client without the "finalized" tag.
+  # Chain or client known to lack the "finalized" tag: skip the call.
   - name: example-l2
     rpc_url: https://<L2_RPC_HOST>
     finalized: false

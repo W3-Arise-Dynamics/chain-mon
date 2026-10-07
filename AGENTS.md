@@ -22,13 +22,18 @@ whole exporter lives in `exporter.py`.
 - **No derived values in the exporter.** Expose raw facts (block numbers, block timestamps, peer
   count); derived values such as block age or finality lag are computed in PromQL
   (`time() - evm_latest_block_timestamp_seconds`).
-- **Optional RPC calls are per-chain toggles** (`finalized` and `peer_count`, both default true),
-  because endpoint support varies. Any enabled call failing marks the poll as failed.
+- **Optional RPC calls are best-effort.** `finalized` and `peer_count` are per-chain toggles
+  (default true). Their failures never affect `evm_rpc_up` / `evm_rpc_errors_total`, which track only
+  the latest-block call. A call the endpoint rejects (JSON-RPC error, HTTP 4xx except 429) is disabled
+  for that chain until restart and its series removed; transient errors just skip that poll.
+- **Create a labelled series only once it has a value** (compute first, then `.labels().set()`), so
+  unsupported metrics are absent rather than 0.
 - **Chains are isolated.** Each chain polls in its own thread; a slow or failing RPC must never delay
   or break another chain.
-- **Failures keep last values.** On a failed poll set `evm_rpc_up` to 0 and increment
+- **Failures keep last values.** On a failed latest-block poll set `evm_rpc_up` to 0 and increment
   `evm_rpc_errors_total`; do not reset block metrics.
-- **Never log RPC URLs** or exception messages that may contain them (URLs can embed API keys).
+- **Never log RPC URLs** or exception messages that may contain them (URLs can embed API keys);
+  log via `describe()`, never `str()` of a `requests` exception.
 - Metric names use the `evm_` prefix, a `chain` label, and Prometheus naming conventions
   (base units, `_total` for counters, `_seconds` for times).
 - Keep dependencies minimal and pinned. Ask before adding a new one.
